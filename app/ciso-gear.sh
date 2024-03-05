@@ -69,7 +69,11 @@ if [[ -e $axi_input_file ]] && [[ -e $cor_input_file ]] && [[ -e $sag_input_file
     cp ${sag_input_file} ${work}/T2w_SAG.nii.gz
 else
   echo "** ${CONTAINER} Missing one or more Nifti inputs within input directory $INPUT_DIR **"
+  # pull AXI to work directory
+  echo "${CONTAINER}  Input file found: ${axi_input_file}"
+  cp ${axi_input_file} ${work}/T2w_AXI.nii.gz
   prefix=${prefix}-AXI
+  # Look for COR and pull to work directory
   if [[ -e $cor_input_file ]]; then
     echo "${CONTAINER}  Input file found: ${cor_input_file}"
     cp ${cor_input_file} ${work}/T2w_COR.nii.gz
@@ -77,6 +81,7 @@ else
   else
     echo "${CONTAINER}  Missing coronal input file"
   fi
+  # Look for SAG and pull to work directory
   if [[ -e $sag_input_file ]]; then
     echo "${CONTAINER}  Input file found: ${sag_input_file}"
     cp ${sag_input_file} ${work}/T2w_SAG.nii.gz
@@ -91,6 +96,9 @@ fi
 
 echo "work directory contents:"
 echo "$(ls -l $work)"
+# Collect files in work directory
+triplane_input=`ls $work/*.nii.gz`
+
 ##############################################################################
 # Run hyperfine-ciso algorithm
 echo "${CONTAINER}  Running hyperfine-ciso algorithm"
@@ -100,11 +108,11 @@ if [[ $phantom == "true" ]]; then
 
     # Create a isotropic image from the 3 T2 images
     echo "Running antsMultivariateTemplateConstruction2.sh with rigid registration to axial image..."
-    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/T2w_AXI.nii.gz -r 1 -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/tmp_${prefix} ${work}/T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
+    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/T2w_AXI.nii.gz -r 1 -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/tmp_${prefix} ${triplane_input} #${work}/T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
     echo "Resampling intermediate template to isotropic 1.5mm..."
     ResampleImageBySpacing 3 ${work}/tmp_${prefix} ${work}/resampledTemplate.nii.gz 1.5 1.5 1.5
     echo "Running antsMultivariateTemplateConstruction2.sh with non-linear registration to resampled template..."
-    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/resampledTemplate.nii.gz -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/${prefix} ${work}/T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
+    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/resampledTemplate.nii.gz -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/${prefix} ${triplane_input} #${work}/T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
     echo "Cleaning up..."
     mv $work/${prefix}template0.nii.gz /flywheel/v0/output/phantom_${prefix}.nii.gz
     exit 0
@@ -121,17 +129,15 @@ else
     
     # Create a template from the 3 T2 images
     echo "Running antsMultivariateTemplateConstruction2.sh with rigid registration to axial image..."
-    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/T2w_AXI.nii.gz -r 1 -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/tmp_${prefix} ${work}/* #T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
+    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/T2w_AXI.nii.gz -r 1 -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/tmp_${prefix} ${triplane_input} # #T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
     echo "Resampling intermediate template to isotropic 1.5mm..."
     ResampleImageBySpacing 3 ${work}/tmp_${prefix} ${work}/resampledTemplate.nii.gz 1.5 1.5 1.5
     echo "Running antsMultivariateTemplateConstruction2.sh with non-linear registration to resampled template..."
-    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/resampledTemplate.nii.gz -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/${prefix} ${work}/* #T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
+    antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -z ${work}/resampledTemplate.nii.gz -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/${prefix} ${triplane_input} # #T2w_AXI.nii.gz ${work}/T2w_COR.nii.gz ${work}/T2w_SAG.nii.gz
     echo "Cleaning up..."
     mv $work/${prefix}template0.nii.gz /flywheel/v0/output/${prefix}.nii.gz
-    exit 0
-  
+    # exit 0
     else
-  
     echo "Target template specified: ${target_template}"
     echo "Resampling template to match input resolution 1.5mm"
     # Resample high resolution template to match input (1.5mm)
@@ -153,14 +159,14 @@ else
     fi
 
     # Collect output from registration
-    triplane_input=`ls $work/reg_*_Warped.nii.gz`
+    triplane_input_reg=`ls $work/reg_*_Warped.nii.gz`
     echo "Files for reconstruction: "
-    echo ${triplane_input}
+    echo ${triplane_input_reg}
 
     # Check for registered files and smush them together
-    if [[ ! -z $triplane_input ]]; then
+    if [[ ! -z $triplane_input_reg ]]; then
         echo "Running antsMultivariateTemplateConstruction2.sh"
-        antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -r 1 -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/${prefix} ${triplane_input}
+        antsMultivariateTemplateConstruction2.sh -d ${imageDimension} -i ${Iteration} -r 1 -f 4x2x1 -s 2x1x0vox -q 30x20x4 -t ${transformationModel} -m ${similarityMetric} -o ${work}/${prefix} ${triplane_input_reg}
     fi
 
     # Check isotantsMultivariateTemplateConstruction2.sh completed & clean up output
